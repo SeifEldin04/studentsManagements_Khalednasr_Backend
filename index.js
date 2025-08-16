@@ -32,16 +32,6 @@ app.use('/api/exam_scores', examScoresRoute)
 const attendanceRoute = require('./src/routes/attendance.route')
 app.use('/api/attendance', attendanceRoute)
 
-// Database check
-const pool = require('./db');
-
-pool.query('SELECT NOW()', (err, res) => {
-  if (err) {
-    console.error('Error connecting to DB:', err);
-  } else {
-    console.log('✅ Connected to Supabase PostgreSQL at:', res.rows[0].now);
-  }
-});
 
 app.get('/', (req, res) => {
   res.status(200).json({ message: '✅ Server is running successfully!' });
