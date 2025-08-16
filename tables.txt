@@ -1,0 +1,225 @@
+-- إنشاء جدول المستخدمين
+CREATE TABLE IF NOT EXISTS users (
+    id SERIAL PRIMARY KEY,
+    userName VARCHAR(50) UNIQUE NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    password VARCHAR(255) NOT NULL
+);
+
+
+-- إنشاء جدول السناتر
+CREATE TABLE IF NOT EXISTS centers (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    grade1 BOOLEAN DEFAULT FALSE,
+    grade2 BOOLEAN DEFAULT FALSE,
+    grade2_specialization_science BOOLEAN DEFAULT FALSE,
+    grade2_specialization_arts BOOLEAN DEFAULT FALSE,
+    grade3 BOOLEAN DEFAULT FALSE,
+    statistics BOOLEAN DEFAULT FALSE,
+    user_id INT REFERENCES users(id)
+);
+
+-- جدول مواعيد السنتر
+CREATE TABLE IF NOT EXISTS center_schedules (
+    id SERIAL PRIMARY KEY,
+    center_id INTEGER REFERENCES centers(id) ON DELETE CASCADE,
+    grade VARCHAR(40),
+    day_of_week VARCHAR(30),
+    time TEXT,
+    subject VARCHAR(75),
+    user_id INT REFERENCES users(id)
+);
+
+-- جدول الطلاب مع total_score وغيره
+CREATE TABLE IF NOT EXISTS students (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    grade VARCHAR(80) CHECK (grade IN ('grade1' , 'grade2' , 'grade2_specialization_science' , 'grade2_specialization_arts' , 'grade3' , 'statistics')) NOT NULL,
+    school VARCHAR(150),
+    center_id INTEGER REFERENCES centers(id),
+    center_name VARCHAR(255),
+    address TEXT,
+    phone_number VARCHAR(18),
+    guardian_phone_number VARCHAR(18),
+    user_id INT REFERENCES users(id),
+    total_score NUMERIC(10, 2) DEFAULT 0,
+    total_max_score NUMERIC(10, 2) DEFAULT 0,
+    percentage NUMERIC(5, 2) DEFAULT 0
+);
+
+-- جدول الدرجات
+CREATE TABLE IF NOT EXISTS exam_scores (
+    id SERIAL PRIMARY KEY,
+    student_id INTEGER REFERENCES students(id) ON DELETE CASCADE,
+    center_id INTEGER REFERENCES centers(id),
+    grade VARCHAR(80) CHECK (grade IN ('grade1' , 'grade2' , 'grade2_specialization_science' , 'grade2_specialization_arts' , 'grade3' , 'statistics')) NOT NULL,
+    month VARCHAR(20) CHECK (month IN ('july', 'june', 'may', 'april', 'march', 'february', 'january', 'december', 'november', 'october', 'september', 'august')) NOT NULL,
+    exam1 TEXT,
+    exam1_max TEXT,
+    exam2 TEXT,
+    exam2_max TEXT,
+    exam3 TEXT,
+    exam3_max TEXT,
+    exam4 TEXT,
+    exam4_max TEXT,
+    exam5 TEXT,
+    exam5_max TEXT,
+    exam6 TEXT,
+    exam6_max TEXT,
+    exam7 TEXT,
+    exam7_max TEXT,
+    exam8 TEXT,
+    exam8_max TEXT,
+    user_id INT REFERENCES users(id),
+    UNIQUE (student_id, center_id, grade, month)
+);
+
+
+
+هنا الحل: نعدل الـ exam_scores بإضافة الأعمدة:
+
+ALTER TABLE exam_scores
+ADD COLUMN total_score NUMERIC(10, 2) DEFAULT 0,
+ADD COLUMN total_max_score NUMERIC(10, 2) DEFAULT 0,
+ADD COLUMN percentage NUMERIC(5, 2) DEFAULT 0;
+
+
+
+
+وبعدها نعمل FUNCTION + TRIGGER بحيث كل مرة تسجّل أو تعدل درجات الامتحانات، يتجمع المجموع ويتحسب تلقائيًا:
+
+CREATE OR REPLACE FUNCTION calculate_exam_totals()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_total NUMERIC(10, 2) := 0;
+    v_max NUMERIC(10, 2) := 0;
+BEGIN
+    -- جمع الدرجات
+    v_total := 
+        (CASE WHEN NEW.exam1 ~ '^[0-9]+(\.[0-9]+)?$' THEN NEW.exam1::NUMERIC ELSE 0 END) +
+        (CASE WHEN NEW.exam2 ~ '^[0-9]+(\.[0-9]+)?$' THEN NEW.exam2::NUMERIC ELSE 0 END) +
+        (CASE WHEN NEW.exam3 ~ '^[0-9]+(\.[0-9]+)?$' THEN NEW.exam3::NUMERIC ELSE 0 END) +
+        (CASE WHEN NEW.exam4 ~ '^[0-9]+(\.[0-9]+)?$' THEN NEW.exam4::NUMERIC ELSE 0 END) +
+        (CASE WHEN NEW.exam5 ~ '^[0-9]+(\.[0-9]+)?$' THEN NEW.exam5::NUMERIC ELSE 0 END) +
+        (CASE WHEN NEW.exam6 ~ '^[0-9]+(\.[0-9]+)?$' THEN NEW.exam6::NUMERIC ELSE 0 END) +
+        (CASE WHEN NEW.exam7 ~ '^[0-9]+(\.[0-9]+)?$' THEN NEW.exam7::NUMERIC ELSE 0 END) +
+        (CASE WHEN NEW.exam8 ~ '^[0-9]+(\.[0-9]+)?$' THEN NEW.exam8::NUMERIC ELSE 0 END);
+
+    -- جمع الدرجات القصوى
+    v_max := 
+        (CASE WHEN NEW.exam1_max ~ '^[0-9]+(\.[0-9]+)?$' THEN NEW.exam1_max::NUMERIC ELSE 0 END) +
+        (CASE WHEN NEW.exam2_max ~ '^[0-9]+(\.[0-9]+)?$' THEN NEW.exam2_max::NUMERIC ELSE 0 END) +
+        (CASE WHEN NEW.exam3_max ~ '^[0-9]+(\.[0-9]+)?$' THEN NEW.exam3_max::NUMERIC ELSE 0 END) +
+        (CASE WHEN NEW.exam4_max ~ '^[0-9]+(\.[0-9]+)?$' THEN NEW.exam4_max::NUMERIC ELSE 0 END) +
+        (CASE WHEN NEW.exam5_max ~ '^[0-9]+(\.[0-9]+)?$' THEN NEW.exam5_max::NUMERIC ELSE 0 END) +
+        (CASE WHEN NEW.exam6_max ~ '^[0-9]+(\.[0-9]+)?$' THEN NEW.exam6_max::NUMERIC ELSE 0 END) +
+        (CASE WHEN NEW.exam7_max ~ '^[0-9]+(\.[0-9]+)?$' THEN NEW.exam7_max::NUMERIC ELSE 0 END) +
+        (CASE WHEN NEW.exam8_max ~ '^[0-9]+(\.[0-9]+)?$' THEN NEW.exam8_max::NUMERIC ELSE 0 END);
+
+    -- تحديث القيم في نفس السطر
+    NEW.total_score := v_total;
+    NEW.total_max_score := v_max;
+    NEW.percentage := CASE WHEN v_max > 0 THEN (v_total / v_max) * 100 ELSE 0 END;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+
+
+
+الـ TRIGGER:
+
+DROP TRIGGER IF EXISTS calculate_exam_totals_trigger ON exam_scores;
+
+CREATE TRIGGER calculate_exam_totals_trigger
+BEFORE INSERT OR UPDATE ON exam_scores
+FOR EACH ROW
+EXECUTE FUNCTION calculate_exam_totals();
+
+
+
+لتحديث البيانات القديمة:
+
+UPDATE exam_scores
+SET exam1 = exam1; -- مجرد تريجر يشتغل
+
+
+
+-- جدول الحضور
+CREATE TABLE IF NOT EXISTS attendance (
+    id SERIAL PRIMARY KEY,
+    student_id INTEGER REFERENCES students(id) ON DELETE CASCADE,
+    center_id INTEGER REFERENCES centers(id),
+    grade VARCHAR(80) CHECK (grade IN ('grade1' , 'grade2' , 'grade2_specialization_science' , 'grade2_specialization_arts' , 'grade3' , 'statistics')) NOT NULL,
+    month VARCHAR(20) CHECK (month IN ('july', 'june', 'may', 'april', 'march', 'february', 'january', 'december', 'november', 'october', 'september', 'august')) NOT NULL,
+    class1 BOOLEAN DEFAULT FALSE,
+    class2 BOOLEAN DEFAULT FALSE,
+    class3 BOOLEAN DEFAULT FALSE,
+    class4 BOOLEAN DEFAULT FALSE,
+    class5 BOOLEAN DEFAULT FALSE,
+    class6 BOOLEAN DEFAULT FALSE,
+    class7 BOOLEAN DEFAULT FALSE,
+    class8 BOOLEAN DEFAULT FALSE,
+    user_id INT REFERENCES users(id),
+    UNIQUE (student_id, center_id, grade, month)
+);
+
+
+
+-- ✅ الفانكشن لحساب المجموع والتحديث التلقائي
+CREATE OR REPLACE FUNCTION update_student_scores() RETURNS TRIGGER AS $$
+DECLARE
+    v_total_score NUMERIC(10, 2);
+    v_total_max_score NUMERIC(10, 2);
+    v_percentage NUMERIC(5, 2);
+BEGIN
+    SELECT 
+        COALESCE(SUM(
+            CASE WHEN exam1 ~ '^[0-9]+(\.[0-9]+)?$' THEN CAST(exam1 AS NUMERIC) ELSE 0 END +
+            CASE WHEN exam2 ~ '^[0-9]+(\.[0-9]+)?$' THEN CAST(exam2 AS NUMERIC) ELSE 0 END +
+            CASE WHEN exam3 ~ '^[0-9]+(\.[0-9]+)?$' THEN CAST(exam3 AS NUMERIC) ELSE 0 END +
+            CASE WHEN exam4 ~ '^[0-9]+(\.[0-9]+)?$' THEN CAST(exam4 AS NUMERIC) ELSE 0 END +
+            CASE WHEN exam5 ~ '^[0-9]+(\.[0-9]+)?$' THEN CAST(exam5 AS NUMERIC) ELSE 0 END +
+            CASE WHEN exam6 ~ '^[0-9]+(\.[0-9]+)?$' THEN CAST(exam6 AS NUMERIC) ELSE 0 END +
+            CASE WHEN exam7 ~ '^[0-9]+(\.[0-9]+)?$' THEN CAST(exam7 AS NUMERIC) ELSE 0 END +
+            CASE WHEN exam8 ~ '^[0-9]+(\.[0-9]+)?$' THEN CAST(exam8 AS NUMERIC) ELSE 0 END
+        ), 0),
+        COALESCE(SUM(
+            CASE WHEN exam1_max ~ '^[0-9]+(\.[0-9]+)?$' THEN CAST(exam1_max AS NUMERIC) ELSE 0 END +
+            CASE WHEN exam2_max ~ '^[0-9]+(\.[0-9]+)?$' THEN CAST(exam2_max AS NUMERIC) ELSE 0 END +
+            CASE WHEN exam3_max ~ '^[0-9]+(\.[0-9]+)?$' THEN CAST(exam3_max AS NUMERIC) ELSE 0 END +
+            CASE WHEN exam4_max ~ '^[0-9]+(\.[0-9]+)?$' THEN CAST(exam4_max AS NUMERIC) ELSE 0 END +
+            CASE WHEN exam5_max ~ '^[0-9]+(\.[0-9]+)?$' THEN CAST(exam5_max AS NUMERIC) ELSE 0 END +
+            CASE WHEN exam6_max ~ '^[0-9]+(\.[0-9]+)?$' THEN CAST(exam6_max AS NUMERIC) ELSE 0 END +
+            CASE WHEN exam7_max ~ '^[0-9]+(\.[0-9]+)?$' THEN CAST(exam7_max AS NUMERIC) ELSE 0 END +
+            CASE WHEN exam8_max ~ '^[0-9]+(\.[0-9]+)?$' THEN CAST(exam8_max AS NUMERIC) ELSE 0 END
+        ), 0)
+    INTO v_total_score, v_total_max_score
+    FROM exam_scores
+    WHERE student_id = COALESCE(NEW.student_id, OLD.student_id);
+
+    IF v_total_max_score > 0 THEN
+        v_percentage := (v_total_score / v_total_max_score) * 100;
+    ELSE
+        v_percentage := 0;
+    END IF;
+
+    UPDATE students
+    SET total_score = v_total_score,
+        total_max_score = v_total_max_score,
+        percentage = v_percentage
+    WHERE id = COALESCE(NEW.student_id, OLD.student_id);
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ✅ التريجر
+CREATE TRIGGER update_student_scores_trigger
+AFTER INSERT OR UPDATE OR DELETE ON exam_scores
+FOR EACH ROW EXECUTE FUNCTION update_student_scores();
+
+-- ✅ خطوة لتحديث البيانات الحالية بعد تشغيل التريجر
+UPDATE exam_scores SET id = id;
