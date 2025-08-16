@@ -43,6 +43,10 @@ pool.query('SELECT NOW()', (err, res) => {
   }
 });
 
+app.get('/', (req, res) => {
+  res.status(200).json({ message: '✅ Server is running successfully!' });
+});
+
 // Start server
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
